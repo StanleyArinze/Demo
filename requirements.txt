@@ -1,6 +1,5 @@
-streamlit
-pandas
-numpy
-plotly
-scikit-learn
-joblib
+app.py
+requirements.txt
+model.pkl
+scaler.pkl
+beijing_air_quality_cleaned.csv
