@@ -1,832 +1,396 @@
-# ============================================================
-# CMP7005 PRAC1: Beijing Air Quality Prediction System
-# Streamlit Cloud Application
-# Student: Ugwuoke Stanley Arinze
-#
-# Purpose:
-# This app presents the full workflow required by the rubric:
-# Task 1: Data Handling
-# Task 2: Exploratory Data Analysis
-# Task 3: Model Building
-# Task 4: Application Development
-# Task 5: Version Control
-# ============================================================
-
-import os
-import joblib
-import numpy as np
-import pandas as pd
+"""
+Beijing Air Quality Prediction System
+CMP7005 - Streamlit Web Application
+Student: Stanley Arinze Ugwuoke | ID: st20338478
+"""
+ 
 import streamlit as st
+import pandas as pd
+import numpy as np
+import glob
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
+import warnings
+warnings.filterwarnings("ignore")
+ 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score
+import joblib
+ 
+# ─── Page Config ────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Beijing Air Quality Prediction App",
-    page_icon="🌍",
-    layout="wide"
+    page_title="Beijing Air Quality",
+    page_icon="🌫️",
+    layout="wide",
 )
-
-
-# ============================================================
-# CUSTOM STYLING
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-    .main {
-        background-color: #f7f9fc;
+ 
+# ─── Custom CSS ─────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+    .main-title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #1a73e8;
     }
-
-    .title-text {
-        font-size: 42px;
-        font-weight: 800;
-        color: #1f2937;
-        margin-bottom: 10px;
+    .metric-card {
+        background: #f0f4ff;
+        border-radius: 10px;
+        padding: 1rem 1.5rem;
+        text-align: center;
     }
-
-    .subtitle-text {
-        font-size: 18px;
-        color: #4b5563;
-        margin-bottom: 25px;
+    .section-header {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #333;
+        margin-top: 1rem;
     }
-
-    .info-box {
-        background-color: #ffffff;
-        padding: 22px;
-        border-radius: 16px;
-        border: 1px solid #e5e7eb;
-        margin-bottom: 18px;
-        box-shadow: 0px 2px 8px rgba(0,0,0,0.04);
+    [data-testid="stSidebar"] {
+        background-color: #0d1b2a;
     }
-
-    .success-box {
-        background-color: #ecfdf5;
-        padding: 18px;
-        border-radius: 14px;
-        border: 1px solid #a7f3d0;
-        margin-bottom: 18px;
+    [data-testid="stSidebar"] * {
+        color: #e0e8f5 !important;
     }
-
-    .warning-box {
-        background-color: #fffbeb;
-        padding: 18px;
-        border-radius: 14px;
-        border: 1px solid #fde68a;
-        margin-bottom: 18px;
+    [data-testid="stSidebar"] .stRadio label {
+        font-size: 0.95rem;
     }
-
-    .small-note {
-        font-size: 14px;
-        color: #6b7280;
+    .stAlert {
+        border-radius: 8px;
     }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# LOAD DATASET, MODEL AND SCALER
-# ============================================================
-
+</style>
+""", unsafe_allow_html=True)
+ 
+ 
+# ─── Data Loading ────────────────────────────────────────────────────────────
 @st.cache_data
-def load_dataset():
-    """
-    Loads the cleaned Beijing air quality dataset.
-    The dataset must be in the same GitHub repository as app.py.
-    """
-    file_path = "beijing_air_quality_cleaned.csv"
-
-    if os.path.exists(file_path):
-        df = pd.read_csv(file_path)
-
-        if "datetime" in df.columns:
-            df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
-
-        return df
-
-    return None
-
-
+def load_data(uploaded_files):
+    dfs = []
+    for f in uploaded_files:
+        df = pd.read_csv(f)
+        dfs.append(df)
+    air_df = pd.concat(dfs, ignore_index=True)
+    return air_df
+ 
+ 
+@st.cache_data
+def preprocess(air_df: pd.DataFrame) -> pd.DataFrame:
+    df = air_df.copy()
+ 
+    # Handle missing values
+    for col in df.select_dtypes(include=np.number).columns:
+        df[col] = df[col].fillna(df[col].median())
+    for col in df.select_dtypes(include="object").columns:
+        df[col] = df[col].fillna(df[col].mode()[0])
+ 
+    # Datetime
+    if all(c in df.columns for c in ["year", "month", "day", "hour"]):
+        df["datetime"] = pd.to_datetime(df[["year", "month", "day", "hour"]])
+ 
+    # Season
+    def get_season(m):
+        if m in [12, 1, 2]:   return "Winter"
+        elif m in [3, 4, 5]:  return "Spring"
+        elif m in [6, 7, 8]:  return "Summer"
+        else:                  return "Autumn"
+ 
+    if "month" in df.columns:
+        df["season"] = df["month"].apply(get_season)
+ 
+    # Station type
+    if "station" in df.columns:
+        urban = ["Dongsi", "Guanyuan"]
+        df["station_type"] = df["station"].apply(
+            lambda x: "Urban" if x in urban else "Suburban"
+        )
+ 
+    return df
+ 
+ 
 @st.cache_resource
-def load_ml_files():
-    """
-    Loads the trained Random Forest model and StandardScaler.
-    """
-    model_path = "model.pkl"
-    scaler_path = "scaler.pkl"
-
-    if os.path.exists(model_path) and os.path.exists(scaler_path):
-        trained_model = joblib.load(model_path)
-        trained_scaler = joblib.load(scaler_path)
-        return trained_model, trained_scaler
-
-    return None, None
-
-
-data = load_dataset()
-model, scaler = load_ml_files()
-
-
-# ============================================================
-# PM2.5 CATEGORY FUNCTION
-# ============================================================
-
-def get_pm25_category(pm25_value):
-    """
-    Converts predicted PM2.5 value into an understandable air quality category.
-    """
-
-    if pm25_value <= 50:
-        return "Good 🟢", "Air quality is acceptable."
-    elif pm25_value <= 100:
-        return "Moderate 🟡", "Sensitive individuals should reduce prolonged outdoor activity."
-    elif pm25_value <= 150:
-        return "Unhealthy for Sensitive Groups 🟠", "People with respiratory conditions should be careful."
-    elif pm25_value <= 200:
-        return "Unhealthy 🔴", "Everyone may begin to experience health effects."
-    else:
-        return "Very Unhealthy / Hazardous 🟣", "Outdoor activity should be limited where possible."
-
-
-# ============================================================
-# SIDEBAR NAVIGATION
-# ============================================================
-
-st.sidebar.title("📌 Navigation")
-
-page = st.sidebar.radio(
-    "Select Section",
-    [
-        "🏠 Home",
-        "📂 Task 1: Data Handling",
-        "📊 Task 2: EDA",
-        "🤖 Task 3: Model Building",
-        "💻 Task 4: Application Development",
-        "🗂️ Task 5: Version Control",
-        "📌 Conclusion"
-    ]
-)
-
-
-# ============================================================
-# HOME PAGE
-# ============================================================
-
+def train_model(df: pd.DataFrame):
+    features = [c for c in ["PM10","SO2","NO2","CO","O3","TEMP","PRES","DEWP","RAIN","WSPM"]
+                if c in df.columns]
+    if "PM2.5" not in df.columns or len(features) < 3:
+        return None, None, None, None, None
+ 
+    X = df[features].dropna()
+    y = df.loc[X.index, "PM2.5"]
+ 
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    scaler = StandardScaler()
+    X_tr_sc = scaler.fit_transform(X_train)
+    X_te_sc = scaler.transform(X_test)
+ 
+    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    model.fit(X_tr_sc, y_train)
+ 
+    y_pred = model.predict(X_te_sc)
+    metrics = {
+        "MSE":  round(mean_squared_error(y_test, y_pred), 3),
+        "RMSE": round(mean_squared_error(y_test, y_pred) ** 0.5, 3),
+        "R²":   round(r2_score(y_test, y_pred), 4),
+    }
+    return model, scaler, features, metrics, (y_test, y_pred)
+ 
+ 
+# ─── Sidebar ────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🌫️ Beijing Air Quality")
+    st.markdown("*CMP7005 · Stanley Ugwuoke*")
+    st.markdown("---")
+ 
+    st.markdown("### 📂 Upload Dataset(s)")
+    uploaded = st.file_uploader(
+        "Upload one or more CSV files",
+        type=["csv"],
+        accept_multiple_files=True,
+        help="Upload the Beijing air quality CSV files (e.g. Dongsi, Guanyuan, Shunyi, Huairou)"
+    )
+ 
+    st.markdown("---")
+    st.markdown("### 🗂️ Navigation")
+    page = st.radio(
+        "",
+        ["🏠 Home",
+         "📋 Dataset View",
+         "📊 Visualisations",
+         "🤖 Model Outputs",
+         "🔮 Predict PM2.5"],
+        label_visibility="collapsed"
+    )
+ 
+    st.markdown("---")
+    st.caption("Built with Streamlit · RandomForest Regressor")
+ 
+ 
+# ─── Guards ──────────────────────────────────────────────────────────────────
+if not uploaded:
+    st.markdown('<p class="main-title">🌫️ Beijing Air Quality Prediction System</p>', unsafe_allow_html=True)
+    st.info("👈  Upload your Beijing air quality CSV files in the sidebar to get started.")
+    st.markdown("""
+    **Expected columns include:**
+    `year`, `month`, `day`, `hour`, `PM2.5`, `PM10`, `SO2`, `NO2`, `CO`, `O3`,
+    `TEMP`, `PRES`, `DEWP`, `RAIN`, `WSPM`, `station`
+    """)
+    st.stop()
+ 
+# Load & preprocess
+raw_df = load_data(uploaded)
+df = preprocess(raw_df)
+ 
+# ─── HOME ────────────────────────────────────────────────────────────────────
 if page == "🏠 Home":
-
-    st.markdown(
-        '<div class="title-text">🌍 Beijing Air Quality Prediction System</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="subtitle-text">CMP7005 Programming for Data Analysis — From Data to Application Development</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        <div class="info-box">
-        This Streamlit application presents a complete data analysis and machine learning workflow
-        for predicting PM2.5 air pollution levels in Beijing. The project uses selected urban and
-        suburban monitoring stations, performs exploratory data analysis, builds a prediction model,
-        and presents the results through an interactive web application.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.subheader("🎯 Project Aim")
-
-    st.write(
-        """
-        The aim of this project is to develop a data-driven air quality prediction system using Python.
-        The system analyses pollutant and meteorological variables and predicts PM2.5 concentration
-        using a machine learning model.
-        """
-    )
-
-    st.subheader("✅ Project Workflow")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.info("📂 **Data Handling**\n\nImport, combine and organise selected station datasets.")
-
-    with col2:
-        st.info("📊 **EDA**\n\nExplore data patterns, relationships, missing values and visual trends.")
-
-    with col3:
-        st.info("🤖 **Model Building**\n\nTrain and evaluate a Random Forest model for PM2.5 prediction.")
-
-    col4, col5 = st.columns(2)
-
-    with col4:
-        st.success("💻 **Application Development**\n\nBuild an interactive Streamlit GUI.")
-
-    with col5:
-        st.success("🗂️ **Version Control**\n\nUse GitHub for project management and commits.")
-
-    st.subheader("Why PM2.5 Matters")
-
-    st.write(
-        """
-        PM2.5 refers to fine particulate matter that can enter the lungs and bloodstream.
-        Monitoring and predicting PM2.5 is important because high concentrations can affect
-        public health, especially for sensitive groups.
-        """
-    )
-
-
-# ============================================================
-# TASK 1: DATA HANDLING
-# ============================================================
-
-elif page == "📂 Task 1: Data Handling":
-
-    st.header("📂 Task 1: Data Handling")
-
-    st.markdown(
-        """
-        <div class="info-box">
-        This section explains how the data was selected, imported, merged and prepared
-        for analysis. Four monitoring stations were used: two urban and two suburban.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.subheader("Selected Monitoring Stations")
-
-    station_selection = pd.DataFrame(
-        {
-            "Station": ["Dongsi", "Guanyuan", "Shunyi", "Huairou"],
-            "Station Type": ["Urban", "Urban", "Suburban", "Suburban"],
-            "Justification": [
-                "Represents inner-city air quality conditions.",
-                "Represents another urban monitoring location.",
-                "Represents suburban air quality conditions.",
-                "Represents outer/suburban air quality conditions."
-            ]
-        }
-    )
-
-    st.dataframe(station_selection, use_container_width=True)
-
-    st.subheader("Dataset Loading Status")
-
-    if data is not None:
-        st.success("Cleaned dataset loaded successfully.")
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("Number of Rows", f"{data.shape[0]:,}")
-        col2.metric("Number of Columns", data.shape[1])
-
-        if "station" in data.columns:
-            col3.metric("Number of Stations", data["station"].nunique())
+    st.markdown('<p class="main-title">🌫️ Beijing Air Quality Prediction System</p>', unsafe_allow_html=True)
+    st.markdown("Analysing pollution across monitoring stations — **Guanyuan · Dongsi · Shunyi · Huairou**")
+    st.markdown("---")
+ 
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Records",   f"{len(df):,}")
+    c2.metric("Stations",        df["station"].nunique() if "station" in df.columns else "—")
+    c3.metric("Avg PM2.5",       f"{df['PM2.5'].mean():.1f} µg/m³" if "PM2.5" in df.columns else "—")
+    c4.metric("Date Range",
+              f"{df['datetime'].dt.year.min()}–{df['datetime'].dt.year.max()}"
+              if "datetime" in df.columns else "—")
+ 
+    st.markdown("#### Quick PM2.5 Snapshot")
+    if "datetime" in df.columns and "PM2.5" in df.columns:
+        fig, ax = plt.subplots(figsize=(12, 3))
+        df.set_index("datetime")["PM2.5"].resample("M").mean().plot(ax=ax, color="#1a73e8")
+        ax.set_xlabel(""); ax.set_ylabel("µg/m³"); ax.set_title("")
+        ax.spines[["top","right"]].set_visible(False)
+        st.pyplot(fig); plt.close()
+ 
+ 
+# ─── DATASET VIEW ────────────────────────────────────────────────────────────
+elif page == "📋 Dataset View":
+    st.header("📋 Dataset View")
+ 
+    tab1, tab2, tab3 = st.tabs(["Preview", "Statistics", "Missing Values"])
+ 
+    with tab1:
+        st.subheader("Raw Data Preview")
+        n = st.slider("Rows to display", 5, 100, 20)
+        if "station" in df.columns:
+            stations = ["All"] + sorted(df["station"].unique().tolist())
+            sel = st.selectbox("Filter by station", stations)
+            view = df if sel == "All" else df[df["station"] == sel]
         else:
-            col3.metric("Number of Stations", "N/A")
-
-        st.subheader("Dataset Preview")
-        st.dataframe(data.head(10), use_container_width=True)
-
-        st.subheader("Column Names")
-        st.write(list(data.columns))
-
-    else:
-        st.error(
-            """
-            Dataset not found. Please upload `beijing_air_quality_cleaned.csv`
-            to the same GitHub repository as app.py.
-            """
-        )
-
-
-# ============================================================
-# TASK 2: EXPLORATORY DATA ANALYSIS
-# ============================================================
-
-elif page == "📊 Task 2: EDA":
-
-    st.header("📊 Task 2: Exploratory Data Analysis")
-
-    if data is None:
-        st.error("Dataset not found. Please add beijing_air_quality_cleaned.csv to your GitHub repository.")
-
-    else:
-        st.markdown(
-            """
-            <div class="info-box">
-            This section presents data understanding, preprocessing summary, statistical analysis
-            and visualisation. It helps identify pollution patterns across stations, seasons and time.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        eda_tab1, eda_tab2, eda_tab3, eda_tab4 = st.tabs(
-            [
-                "2.1 Data Understanding",
-                "2.2 Preprocessing",
-                "2.3 Visualisation",
-                "2.4 Key Insights"
-            ]
-        )
-
-        # ------------------------------------------------------------
-        # 2.1 DATA UNDERSTANDING
-        # ------------------------------------------------------------
-
-        with eda_tab1:
-
-            st.subheader("Dataset Structure")
-
-            col1, col2, col3 = st.columns(3)
-
-            col1.metric("Rows", f"{data.shape[0]:,}")
-            col2.metric("Columns", data.shape[1])
-
-            if "station" in data.columns:
-                col3.metric("Stations", data["station"].nunique())
-            else:
-                col3.metric("Stations", "N/A")
-
-            st.subheader("Column Names")
-            st.write(list(data.columns))
-
-            st.subheader("Missing Values")
-
-            missing_values = data.isnull().sum().reset_index()
-            missing_values.columns = ["Column", "Missing Values"]
-
-            st.dataframe(missing_values, use_container_width=True)
-
-            st.subheader("Statistical Summary")
-
-            st.dataframe(data.describe(), use_container_width=True)
-
-            st.info(
-                """
-                Interpretation: This section confirms the structure of the dataset,
-                checks whether missing values exist, and provides a statistical overview
-                of pollutant and weather variables.
-                """
-            )
-
-        # ------------------------------------------------------------
-        # 2.2 PREPROCESSING
-        # ------------------------------------------------------------
-
-        with eda_tab2:
-
-            st.subheader("Preprocessing Steps Completed")
-
-            preprocessing_steps = pd.DataFrame(
-                {
-                    "Step": [
-                        "Datetime creation",
-                        "Station type classification",
-                        "Missing value handling",
-                        "Duplicate removal",
-                        "Season feature creation",
-                        "Cleaned dataset export"
-                    ],
-                    "Purpose": [
-                        "Combined year, month, day and hour into a usable time column.",
-                        "Grouped stations into urban and suburban categories.",
-                        "Filled numerical values using median and categorical values using mode.",
-                        "Removed repeated records to improve data quality.",
-                        "Created seasonal groups for temporal pollution analysis.",
-                        "Saved cleaned data for modelling and Streamlit deployment."
-                    ]
-                }
-            )
-
-            st.dataframe(preprocessing_steps, use_container_width=True)
-
-            st.success(
-                """
-                These preprocessing steps improved data quality and prepared the dataset
-                for reliable exploratory analysis and machine learning.
-                """
-            )
-
-        # ------------------------------------------------------------
-        # 2.3 VISUALISATION
-        # ------------------------------------------------------------
-
-        with eda_tab3:
-
-            st.subheader("Interactive Visualisation Section")
-
-            chart_option = st.selectbox(
-                "Choose a visualisation:",
-                [
-                    "PM2.5 Distribution",
-                    "Average PM2.5 by Station",
-                    "Average PM2.5 by Station Type",
-                    "Average PM2.5 by Season",
-                    "PM2.5 Trend Over Time",
-                    "Correlation Heatmap"
-                ]
-            )
-
-            if chart_option == "PM2.5 Distribution":
-
-                st.write("This chart shows the distribution of PM2.5 values.")
-
-                fig, ax = plt.subplots(figsize=(10, 5))
-                sns.histplot(data["PM2.5"], bins=50, kde=True, ax=ax)
-                ax.set_title("Distribution of PM2.5 Concentration")
-                ax.set_xlabel("PM2.5")
-                ax.set_ylabel("Frequency")
-                st.pyplot(fig)
-
-                st.info(
-                    """
-                    Interpretation: The PM2.5 distribution is usually right-skewed,
-                    meaning most values are moderate but some pollution episodes are very high.
-                    """
-                )
-
-            elif chart_option == "Average PM2.5 by Station":
-
-                st.write("This chart compares average PM2.5 concentration across the selected stations.")
-
-                station_avg = data.groupby("station")["PM2.5"].mean().sort_values(ascending=False)
-
-                st.bar_chart(station_avg)
-
-                st.info(
-                    """
-                    Interpretation: Differences between stations suggest that location influences
-                    pollution exposure and air quality patterns.
-                    """
-                )
-
-            elif chart_option == "Average PM2.5 by Station Type":
-
-                if "station_type" in data.columns:
-                    type_avg = data.groupby("station_type")["PM2.5"].mean()
-                    st.bar_chart(type_avg)
-
-                    st.info(
-                        """
-                        Interpretation: This comparison helps identify whether urban stations
-                        experience higher PM2.5 concentration than suburban stations.
-                        """
-                    )
-                else:
-                    st.warning("station_type column not found in the dataset.")
-
-            elif chart_option == "Average PM2.5 by Season":
-
-                if "season" in data.columns:
-                    season_order = ["Spring", "Summer", "Autumn", "Winter"]
-                    season_avg = data.groupby("season")["PM2.5"].mean()
-                    season_avg = season_avg.reindex([s for s in season_order if s in season_avg.index])
-
-                    st.bar_chart(season_avg)
-
-                    st.info(
-                        """
-                        Interpretation: Seasonal variation helps explain how weather conditions
-                        and human activities influence pollution levels.
-                        """
-                    )
-                else:
-                    st.warning("season column not found in the dataset.")
-
-            elif chart_option == "PM2.5 Trend Over Time":
-
-                if "datetime" in data.columns:
-                    trend = data.groupby("datetime")["PM2.5"].mean()
-                    st.line_chart(trend)
-
-                    st.info(
-                        """
-                        Interpretation: The time-series trend helps identify periods of high and low
-                        pollution across the dataset.
-                        """
-                    )
-                else:
-                    st.warning("datetime column not found in the dataset.")
-
-            elif chart_option == "Correlation Heatmap":
-
-                st.write("This heatmap shows relationships between numerical variables.")
-
-                numeric_data = data.select_dtypes(include=["float64", "int64"])
-
-                fig, ax = plt.subplots(figsize=(12, 8))
-                sns.heatmap(numeric_data.corr(), annot=False, cmap="coolwarm", ax=ax)
-                ax.set_title("Correlation Heatmap of Numerical Variables")
-                st.pyplot(fig)
-
-                st.info(
-                    """
-                    Interpretation: Strong correlations between pollutant variables suggest that
-                    some pollutants may increase or decrease together under similar environmental conditions.
-                    """
-                )
-
-        # ------------------------------------------------------------
-        # 2.4 KEY INSIGHTS
-        # ------------------------------------------------------------
-
-        with eda_tab4:
-
-            st.subheader("Main EDA Insights")
-
-            st.success("1. PM2.5 values show variation across monitoring stations.")
-
-            st.success("2. Seasonal patterns suggest that weather and time of year influence pollution levels.")
-
-            st.success(
-                """
-                3. Pollutant variables such as PM10, NO2, SO2 and CO are useful for understanding PM2.5 behaviour.
-                """
-            )
-
-            st.success(
-                """
-                4. Meteorological variables such as temperature, pressure, dew point, rainfall and wind speed
-                help explain environmental effects on air pollution.
-                """
-            )
-
-
-# ============================================================
-# TASK 3: MODEL BUILDING
-# ============================================================
-
-elif page == "🤖 Task 3: Model Building":
-
-    st.header("🤖 Task 3: Model Building")
-
-    st.markdown(
-        """
-        <div class="info-box">
-        A Random Forest Regressor was used to predict PM2.5 concentration.
-        The model uses air pollutant and meteorological features as input variables.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    model_tab1, model_tab2, model_tab3 = st.tabs(
-        [
-            "Model Description",
-            "Model Performance",
-            "Prediction Tool"
-        ]
-    )
-
-    with model_tab1:
-
-        st.subheader("Selected Features")
-
-        features = ["PM10", "SO2", "NO2", "CO", "O3", "TEMP", "PRES", "DEWP", "RAIN", "WSPM"]
-
-        feature_table = pd.DataFrame(
-            {
-                "Feature": features,
-                "Description": [
-                    "Particulate matter smaller than 10 micrometres",
-                    "Sulphur dioxide",
-                    "Nitrogen dioxide",
-                    "Carbon monoxide",
-                    "Ozone",
-                    "Temperature",
-                    "Atmospheric pressure",
-                    "Dew point",
-                    "Rainfall",
-                    "Wind speed"
-                ]
-            }
-        )
-
-        st.dataframe(feature_table, use_container_width=True)
-
-        st.write(
-            """
-            Random Forest was selected because it can model non-linear relationships
-            between pollutants, weather variables and PM2.5 concentration.
-            """
-        )
-
-    with model_tab2:
-
-        st.subheader("Model Evaluation Metrics")
-
-        col1, col2 = st.columns(2)
-
-        col1.metric("RMSE", "20.71")
-        col2.metric("R² Score", "0.93")
-
-        st.success(
-            """
-            The R² score of 0.93 indicates that the model explains approximately 93%
-            of the variation in PM2.5 concentration.
-            """
-        )
-
-        st.info(
-            """
-            RMSE shows the average prediction error. A lower RMSE means the model predictions
-            are closer to the actual PM2.5 values.
-            """
-        )
-
-    with model_tab3:
-
-        st.subheader("PM2.5 Prediction Tool")
-
-        if model is None or scaler is None:
-            st.error("model.pkl or scaler.pkl not found. Please upload both files to the GitHub repository.")
-
+            view = df
+        st.dataframe(view.head(n), use_container_width=True)
+        st.caption(f"Shape: {df.shape[0]:,} rows × {df.shape[1]} columns")
+ 
+    with tab2:
+        st.subheader("Descriptive Statistics")
+        st.dataframe(df.describe().T.style.format("{:.2f}"), use_container_width=True)
+ 
+    with tab3:
+        st.subheader("Missing Value Summary")
+        mv = df.isnull().sum().reset_index()
+        mv.columns = ["Column", "Missing"]
+        mv["% Missing"] = (mv["Missing"] / len(df) * 100).round(2)
+        mv = mv[mv["Missing"] > 0]
+        if mv.empty:
+            st.success("✅ No missing values found after preprocessing.")
         else:
-            st.write("Enter pollutant and meteorological values below:")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                PM10 = st.number_input("PM10", min_value=0.0, value=50.0)
-                SO2 = st.number_input("SO2", min_value=0.0, value=10.0)
-                NO2 = st.number_input("NO2", min_value=0.0, value=30.0)
-                CO = st.number_input("CO", min_value=0.0, value=500.0)
-                O3 = st.number_input("O3", min_value=0.0, value=40.0)
-
-            with col2:
-                TEMP = st.number_input("Temperature", value=20.0)
-                PRES = st.number_input("Pressure", value=1010.0)
-                DEWP = st.number_input("Dew Point", value=5.0)
-                RAIN = st.number_input("Rain", min_value=0.0, value=0.0)
-                WSPM = st.number_input("Wind Speed", min_value=0.0, value=2.0)
-
-            if st.button("Predict PM2.5"):
-
-                input_data = np.array([[PM10, SO2, NO2, CO, O3, TEMP, PRES, DEWP, RAIN, WSPM]])
-                input_scaled = scaler.transform(input_data)
-                prediction = model.predict(input_scaled)
-
-                pm25_value = float(prediction[0])
-                category, advice = get_pm25_category(pm25_value)
-
-                st.subheader("Prediction Result")
-
-                col1, col2 = st.columns(2)
-
-                col1.metric("Predicted PM2.5", f"{pm25_value:.2f}")
-                col2.metric("Air Quality Category", category)
-
-                st.warning(advice)
-
-
-# ============================================================
-# TASK 4: APPLICATION DEVELOPMENT
-# ============================================================
-
-elif page == "💻 Task 4: Application Development":
-
-    st.header("💻 Task 4: Application Development")
-
-    st.write(
-        """
-        This application was developed using Streamlit to provide a clear graphical user interface.
-        The application is divided into multiple pages that follow the assignment rubric.
-        """
-    )
-
-    app_features = pd.DataFrame(
-        {
-            "Application Feature": [
-                "Sidebar navigation",
-                "Data handling section",
-                "EDA section",
-                "Visualisation section",
-                "Model building section",
-                "PM2.5 prediction tool",
-                "AQI-style interpretation",
-                "Version control documentation"
-            ],
-            "Purpose": [
-                "Allows users to move between project sections.",
-                "Shows data selection and merging process.",
-                "Explains data understanding and preprocessing.",
-                "Displays charts and analytical insights.",
-                "Explains the machine learning method.",
-                "Allows users to input values and obtain predictions.",
-                "Makes predictions easier to understand.",
-                "Shows GitHub usage and project organisation."
-            ]
-        }
-    )
-
-    st.dataframe(app_features, use_container_width=True)
-
-    st.success(
-        """
-        The application demonstrates how Python can be used to move from raw data
-        to a working interactive machine learning system.
-        """
-    )
-
-
-# ============================================================
-# TASK 5: VERSION CONTROL
-# ============================================================
-
-elif page == "🗂️ Task 5: Version Control":
-
-    st.header("🗂️ Task 5: Version Control")
-
-    st.write(
-        """
-        GitHub was used to organise the project files and track development progress.
-        Clear commit messages help demonstrate how the project developed over time.
-        """
-    )
-
-    st.subheader("Recommended GitHub Repository Structure")
-
-    st.code(
-        """
-CMP7005_Air_Quality_App/
-│── app.py
-│── requirements.txt
-│── runtime.txt
-│── model.pkl
-│── scaler.pkl
-│── beijing_air_quality_cleaned.csv
-│── notebook/
-│   └── CMP7005_PRAC1_Notebook.ipynb
-│── figures/
-│   └── visualisation_screenshots.png
-│── README.md
-        """
-    )
-
-    st.subheader("Suggested Commit Messages")
-
-    commit_table = pd.DataFrame(
-        {
-            "Commit Message": [
-                "Created project folder structure",
-                "Loaded and merged Beijing air quality datasets",
-                "Handled missing values and created datetime features",
-                "Completed exploratory data analysis visualisations",
-                "Built Random Forest PM2.5 prediction model",
-                "Saved model and scaler files",
-                "Created Streamlit application interface",
-                "Updated README and final project documentation"
-            ]
-        }
-    )
-
-    st.dataframe(commit_table, use_container_width=True)
-
-    st.info(
-        """
-        Include screenshots of your GitHub repository layout and commit history in your final report.
-        """
-    )
-
-
-# ============================================================
-# CONCLUSION
-# ============================================================
-
-elif page == "📌 Conclusion":
-
-    st.header("📌 Conclusion")
-
-    st.write(
-        """
-        This project successfully developed a complete air quality prediction system.
-        It combined data handling, preprocessing, exploratory data analysis,
-        machine learning and application development into one interactive system.
-        """
-    )
-
-    st.success(
-        """
-        The final Streamlit application demonstrates how data analysis can be transformed
-        into a practical decision-support tool for PM2.5 air pollution prediction.
-        """
-    )
-
-    st.write(
-        """
-        The project also supports professional software development practices by using
-        GitHub version control and organised project documentation.
-        """
-    )
+            st.dataframe(mv, use_container_width=True)
+ 
+ 
+# ─── VISUALISATIONS ──────────────────────────────────────────────────────────
+elif page == "📊 Visualisations":
+    st.header("📊 Visualisations")
+ 
+    viz = st.selectbox("Choose a chart", [
+        "PM2.5 Distribution",
+        "Temperature Distribution",
+        "PM2.5 Trend Over Time",
+        "PM2.5 by Season",
+        "PM2.5 by Station",
+        "PM2.5 by Station Type",
+        "PM2.5 vs Temperature",
+        "Correlation Heatmap",
+    ])
+ 
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.set_style("whitegrid")
+ 
+    if viz == "PM2.5 Distribution" and "PM2.5" in df.columns:
+        sns.histplot(df["PM2.5"], bins=50, kde=True, ax=ax, color="#1a73e8")
+        ax.set_title("Distribution of PM2.5"); ax.set_xlabel("PM2.5 (µg/m³)")
+ 
+    elif viz == "Temperature Distribution" and "TEMP" in df.columns:
+        sns.histplot(df["TEMP"], bins=50, kde=True, ax=ax, color="#e84040")
+        ax.set_title("Distribution of Temperature"); ax.set_xlabel("Temperature (°C)")
+ 
+    elif viz == "PM2.5 Trend Over Time" and "datetime" in df.columns:
+        df.set_index("datetime")["PM2.5"].resample("M").mean().plot(ax=ax, color="#1a73e8")
+        ax.set_title("Monthly Average PM2.5 Over Time"); ax.set_ylabel("PM2.5 (µg/m³)")
+ 
+    elif viz == "PM2.5 by Season" and "season" in df.columns:
+        order = ["Spring","Summer","Autumn","Winter"]
+        sns.boxplot(x="season", y="PM2.5", data=df, order=order,
+                    palette="Set2", ax=ax)
+        ax.set_title("PM2.5 Concentration by Season")
+ 
+    elif viz == "PM2.5 by Station" and "station" in df.columns:
+        sns.boxplot(x="station", y="PM2.5", data=df, palette="Set3", ax=ax)
+        ax.set_title("PM2.5 by Monitoring Station")
+        plt.xticks(rotation=30)
+ 
+    elif viz == "PM2.5 by Station Type" and "station_type" in df.columns:
+        sns.boxplot(x="station_type", y="PM2.5", data=df, palette=["#1a73e8","#e84040"], ax=ax)
+        ax.set_title("PM2.5: Urban vs Suburban Stations")
+ 
+    elif viz == "PM2.5 vs Temperature" and "TEMP" in df.columns:
+        sample = df.sample(min(5000, len(df)), random_state=1)
+        sns.scatterplot(x="TEMP", y="PM2.5", data=sample, alpha=0.3, ax=ax, color="#1a73e8")
+        ax.set_title("PM2.5 vs Temperature")
+ 
+    elif viz == "Correlation Heatmap":
+        plt.close()
+        fig, ax = plt.subplots(figsize=(12, 8))
+        num = df.select_dtypes(include=np.number)
+        sns.heatmap(num.corr(), annot=True, fmt=".2f", cmap="coolwarm",
+                    linewidths=0.5, ax=ax)
+        ax.set_title("Correlation Matrix")
+ 
+    else:
+        st.warning("Required column not found in the dataset.")
+        plt.close()
+        st.stop()
+ 
+    ax.spines[["top","right"]].set_visible(False) if viz != "Correlation Heatmap" else None
+    st.pyplot(fig); plt.close()
+ 
+ 
+# ─── MODEL OUTPUTS ───────────────────────────────────────────────────────────
+elif page == "🤖 Model Outputs":
+    st.header("🤖 Random Forest — Model Outputs")
+ 
+    with st.spinner("Training model… this may take a moment."):
+        model, scaler, features, metrics, test_data = train_model(df)
+ 
+    if model is None:
+        st.error("Could not train model. Please check that the dataset contains PM2.5 and pollutant columns.")
+        st.stop()
+ 
+    # Metrics
+    st.subheader("Performance Metrics")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("MSE",  metrics["MSE"])
+    c2.metric("RMSE", metrics["RMSE"])
+    c3.metric("R² Score", metrics["R²"])
+ 
+    y_test, y_pred = test_data
+ 
+    tab1, tab2 = st.tabs(["Actual vs Predicted", "Feature Importance"])
+ 
+    with tab1:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(y_test, y_pred, alpha=0.3, color="#1a73e8", s=10)
+        mn, mx = float(y_test.min()), float(y_test.max())
+        ax.plot([mn, mx], [mn, mx], "r--", lw=1.5, label="Perfect fit")
+        ax.set_xlabel("Actual PM2.5"); ax.set_ylabel("Predicted PM2.5")
+        ax.set_title("Actual vs Predicted PM2.5"); ax.legend()
+        ax.spines[["top","right"]].set_visible(False)
+        st.pyplot(fig); plt.close()
+ 
+    with tab2:
+        importance = pd.Series(model.feature_importances_, index=features).sort_values()
+        fig, ax = plt.subplots(figsize=(8, 5))
+        importance.plot(kind="barh", ax=ax, color="#1a73e8")
+        ax.set_title("Feature Importance"); ax.set_xlabel("Importance Score")
+        ax.spines[["top","right"]].set_visible(False)
+        st.pyplot(fig); plt.close()
+ 
+    st.markdown("#### Interpretation")
+    top3 = pd.Series(model.feature_importances_, index=features).nlargest(3).index.tolist()
+    st.info(f"**Top predictors:** {', '.join(top3)} — confirming strong relationships between particulate and gaseous pollutants.")
+ 
+ 
+# ─── PREDICT PM2.5 ───────────────────────────────────────────────────────────
+elif page == "🔮 Predict PM2.5":
+    st.header("🔮 Predict PM2.5 Concentration")
+ 
+    with st.spinner("Loading model…"):
+        model, scaler, features, metrics, _ = train_model(df)
+ 
+    if model is None:
+        st.error("Model could not be trained. Check dataset columns.")
+        st.stop()
+ 
+    st.markdown("Enter pollutant and meteorological values to predict PM2.5 level:")
+ 
+    defaults = dict(PM10=80, SO2=15, NO2=40, CO=1000, O3=60,
+                    TEMP=12, PRES=1013, DEWP=2, RAIN=0, WSPM=2)
+ 
+    cols = st.columns(2)
+    user_input = {}
+    for i, feat in enumerate(features):
+        with cols[i % 2]:
+            user_input[feat] = st.number_input(
+                feat, value=float(defaults.get(feat, 0.0)), step=0.1
+            )
+ 
+    if st.button("🔍 Predict", type="primary"):
+        X_in = np.array([[user_input[f] for f in features]])
+        X_sc = scaler.transform(X_in)
+        pred = model.predict(X_sc)[0]
+ 
+        # AQI category
+        if pred <= 12:      aqi, col = "Good 🟢", "green"
+        elif pred <= 35.4:  aqi, col = "Moderate 🟡", "orange"
+        elif pred <= 55.4:  aqi, col = "Unhealthy for Sensitive Groups 🟠", "orange"
+        elif pred <= 150.4: aqi, col = "Unhealthy 🔴", "red"
+        elif pred <= 250.4: aqi, col = "Very Unhealthy 🟣", "purple"
+        else:               aqi, col = "Hazardous ⚫", "maroon"
+ 
+        st.markdown(f"""
+        <div style='background:#f0f4ff;border-radius:12px;padding:1.5rem;text-align:center;margin-top:1rem'>
+            <h2 style='color:#1a73e8;margin:0'>Predicted PM2.5</h2>
+            <h1 style='font-size:3rem;margin:0.5rem 0'>{pred:.1f} µg/m³</h1>
+            <h3 style='color:{col};margin:0'>AQI Category: {aqi}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+ 
