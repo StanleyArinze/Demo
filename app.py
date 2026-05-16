@@ -372,20 +372,20 @@ elif page == "📂 Dataset Overview":
 # ============================================================
 # BEAUTIFUL VISUALISATIONS PAGE
 # ============================================================
-
 elif page == "📊 Beautiful Visualisations":
 
     st.title("📊 Beautiful Interactive Visualisations")
 
     if df.empty:
-        st.error("Dataset not found. Please upload `Task2_Cleaned_Data.csv` to your GitHub repository.")
+        st.error("Dataset not found. Please upload `beijing_air_quality_cleaned.csv` to your GitHub repository.")
 
     else:
         st.markdown(
             """
             <div class="section-card">
             This section uses interactive Plotly charts to explore pollution patterns.
-            The charts are designed to look professional and support strong interpretation in your presentation.
+            The charts support clear interpretation of pollutant distribution, station differences,
+            weather relationships, seasonal patterns and model performance.
             </div>
             """,
             unsafe_allow_html=True
@@ -402,18 +402,19 @@ elif page == "📊 Beautiful Visualisations":
                 "Select pollutant for analysis:",
                 available_pollutants
             )
-visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, visual_tab7, visual_tab8 = st.tabs(
-    [
-        "Distribution",
-        "Station Comparison",
-        "Weather Relationship",
-        "Seasonal Pattern",
-        "Trend Over Time",
-        "Temperature Distribution",
-        "Correlation Heatmap",
-        "Actual vs Predicted"
-    ]
-)
+
+            visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, visual_tab7, visual_tab8 = st.tabs(
+                [
+                    "Distribution",
+                    "Station Comparison",
+                    "Weather Relationship",
+                    "Seasonal Pattern",
+                    "Trend Over Time",
+                    "Temperature Distribution",
+                    "Correlation Heatmap",
+                    "Actual vs Predicted"
+                ]
+            )
 
             # --------------------------------------------------------
             # TAB 1: DISTRIBUTION
@@ -421,7 +422,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
 
             with visual_tab1:
 
-               color_column = "category" if "category" in df.columns else None
+                color_column = "category" if "category" in df.columns else None
 
                 fig = px.histogram(
                     df,
@@ -443,8 +444,8 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                 st.markdown(
                     """
                     <div class="insight-box">
-                    <b>Interpretation:</b> This distribution shows how the pollutant values are spread.
-                    The marginal boxplot helps identify outliers and extreme pollution episodes.
+                    <b>Interpretation:</b> This chart shows how the pollutant values are distributed.
+                    The marginal boxplot helps identify spread, median values and possible extreme pollution episodes.
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -509,7 +510,6 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                         unsafe_allow_html=True
                     )
 
-
             # --------------------------------------------------------
             # TAB 3: WEATHER RELATIONSHIP
             # --------------------------------------------------------
@@ -539,8 +539,8 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                     st.markdown(
                         """
                         <div class="insight-box">
-                        <b>Interpretation:</b> The density heatmap is more effective than a normal
-                        scatterplot for large datasets because it shows where observations are most concentrated.
+                        <b>Interpretation:</b> The density heatmap shows where observations are most concentrated.
+                        This is useful for large datasets because it avoids overcrowding caused by normal scatterplots.
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -583,6 +583,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
 
                 else:
                     st.warning("WSPM column not found.")
+
             # --------------------------------------------------------
             # TAB 4: SEASONAL PATTERN
             # --------------------------------------------------------
@@ -628,33 +629,6 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                         unsafe_allow_html=True
                     )
 
-                if "Month" in df.columns:
-
-                    monthly_avg = (
-                        df.groupby("Month")[selected_pollutant]
-                        .mean()
-                        .reset_index()
-                    )
-
-                    fig2 = px.line(
-                        monthly_avg,
-                        x="Month",
-                        y=selected_pollutant,
-                        markers=True,
-                        line_shape="spline"
-                    )
-
-                    fig2.update_traces(
-                        line=dict(width=4),
-                        marker=dict(size=10)
-                    )
-
-                    fig2 = apply_plotly_style(
-                        fig2,
-                        f"Monthly Trend of {selected_pollutant}"
-                    )
-
-                    st.plotly_chart(fig2, use_container_width=True)
             # --------------------------------------------------------
             # TAB 5: TREND OVER TIME
             # --------------------------------------------------------
@@ -674,9 +648,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                     fig = px.line(
                         trend_df,
                         x="datetime",
-                        y=selected_pollutant,
-                        title=f"{selected_pollutant} Trend Over Time",
-                        markers=False
+                        y=selected_pollutant
                     )
 
                     fig.update_traces(line=dict(width=3))
@@ -692,7 +664,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                         """
                         <div class="insight-box">
                         <b>Interpretation:</b> This time-series chart shows how pollution levels change over time.
-                        It helps identify periods of higher and lower air pollution.
+                        Peaks indicate periods of higher pollution, while lower sections represent cleaner air periods.
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -725,6 +697,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
 
                 else:
                     st.warning("No datetime or month column found for trend analysis.")
+
             # --------------------------------------------------------
             # TAB 6: TEMPERATURE DISTRIBUTION
             # --------------------------------------------------------
@@ -758,7 +731,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                         """
                         <div class="insight-box">
                         <b>Interpretation:</b> This chart shows the spread of temperature values in the dataset.
-                        It also helps explain seasonal and weather-related effects on air pollution.
+                        Temperature is important because it can influence atmospheric conditions and pollutant concentration.
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -766,6 +739,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
 
                 else:
                     st.warning("TEMP column not found in the dataset.")
+
             # --------------------------------------------------------
             # TAB 7: CORRELATION HEATMAP
             # --------------------------------------------------------
@@ -806,6 +780,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                         """,
                         unsafe_allow_html=True
                     )
+
             # --------------------------------------------------------
             # TAB 8: ACTUAL VS PREDICTED
             # --------------------------------------------------------
@@ -849,8 +824,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                             actual_pred_df,
                             x="Actual PM2.5",
                             y="Predicted PM2.5",
-                            opacity=0.6,
-                            title="Actual vs Predicted PM2.5"
+                            opacity=0.6
                         )
 
                         fig.add_shape(
@@ -873,7 +847,7 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
                             """
                             <div class="insight-box">
                             <b>Interpretation:</b> Points closer to the diagonal line show better prediction accuracy.
-                            This graph demonstrates how well the trained model predicts PM2.5 values compared with actual observations.
+                            This graph demonstrates how closely the model predictions match the actual PM2.5 observations.
                             </div>
                             """,
                             unsafe_allow_html=True
@@ -881,7 +855,6 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
 
                     except Exception as e:
                         st.error(f"Could not create Actual vs Predicted graph: {e}")
-
 
 # ============================================================
 # MODEL OUTPUTS PAGE
