@@ -552,6 +552,7 @@ elif page == "📊 Beautiful Visualisations":
 
                     color_column = "category" if "category" in sample_df2.columns else None
 
+)
                     fig2 = px.scatter(
                         sample_df2,
                         x="WSPM",
@@ -559,7 +560,7 @@ elif page == "📊 Beautiful Visualisations":
                         color=color_column,
                         opacity=0.55,
                         color_discrete_sequence=px.colors.qualitative.Set1,
-                        trendline="ols"
+                        
                     )
 
                     fig2 = apply_plotly_style(
