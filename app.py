@@ -507,6 +507,7 @@ elif page == "📊 Beautiful Visualisations":
                         unsafe_allow_html=True
                     )
 
+
             # --------------------------------------------------------
             # TAB 3: WEATHER RELATIONSHIP
             # --------------------------------------------------------
@@ -552,21 +553,21 @@ elif page == "📊 Beautiful Visualisations":
 
                     color_column = "category" if "category" in sample_df2.columns else None
 
-                        fig2 = px.scatter(
-                            sample_df2,
-                            x="WSPM",
-                            y=selected_pollutant,
-                            color=color_column,
-                            opacity=0.55,
-                            color_discrete_sequence=px.colors.qualitative.Set1
-                        )
-                        
-                        fig2 = apply_plotly_style(
-                            fig2,
-                            f"Wind Speed vs {selected_pollutant}"
-                        )
-                        
-                        st.plotly_chart(fig2, use_container_width=True)
+                    fig2 = px.scatter(
+                        sample_df2,
+                        x="WSPM",
+                        y=selected_pollutant,
+                        color=color_column,
+                        opacity=0.55,
+                        color_discrete_sequence=px.colors.qualitative.Set1
+                    )
+
+                    fig2 = apply_plotly_style(
+                        fig2,
+                        f"Wind Speed vs {selected_pollutant}"
+                    )
+
+                    st.plotly_chart(fig2, use_container_width=True)
 
                     st.markdown(
                         """
@@ -578,6 +579,8 @@ elif page == "📊 Beautiful Visualisations":
                         unsafe_allow_html=True
                     )
 
+                else:
+                    st.warning("WSPM column not found.")
             # --------------------------------------------------------
             # TAB 4: SEASONAL PATTERN
             # --------------------------------------------------------
