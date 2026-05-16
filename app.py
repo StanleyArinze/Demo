@@ -552,7 +552,6 @@ elif page == "📊 Beautiful Visualisations":
 
                     color_column = "category" if "category" in sample_df2.columns else None
 
-)
                         fig2 = px.scatter(
                             sample_df2,
                             x="WSPM",
