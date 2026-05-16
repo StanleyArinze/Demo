@@ -825,7 +825,8 @@ elif page == "📌 Project Summary":
 
     st.info(
         """
-        In your presentation, explain that the visualisation page was improved using Plotly
-        to make the dashboard interactive, professional and easier to interpret.
+       The visualisation component provides an interactive and professional way to explore
+    air pollution patterns across stations, seasons, weather variables and pollutant relationships.
+    This improves the clarity of the analysis and supports evidence-based interpretation.
         """
     )
