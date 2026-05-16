@@ -419,9 +419,9 @@ visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, vi
             # TAB 1: DISTRIBUTION
             # --------------------------------------------------------
 
-        with visual_tab1:
+            with visual_tab1:
 
-                color_column = "category" if "category" in df.columns else None
+               color_column = "category" if "category" in df.columns else None
 
                 fig = px.histogram(
                     df,
