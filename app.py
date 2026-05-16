@@ -402,16 +402,18 @@ elif page == "📊 Beautiful Visualisations":
                 "Select pollutant for analysis:",
                 available_pollutants
             )
-
-            visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5 = st.tabs(
-                [
-                    "Distribution",
-                    "Station Comparison",
-                    "Weather Relationship",
-                    "Seasonal Pattern",
-                    "Correlation Heatmap"
-                ]
-            )
+visual_tab1, visual_tab2, visual_tab3, visual_tab4, visual_tab5, visual_tab6, visual_tab7, visual_tab8 = st.tabs(
+    [
+        "Distribution",
+        "Station Comparison",
+        "Weather Relationship",
+        "Seasonal Pattern",
+        "Trend Over Time",
+        "Temperature Distribution",
+        "Correlation Heatmap",
+        "Actual vs Predicted"
+    ]
+)
 
             # --------------------------------------------------------
             # TAB 1: DISTRIBUTION
@@ -653,12 +655,122 @@ elif page == "📊 Beautiful Visualisations":
                     )
 
                     st.plotly_chart(fig2, use_container_width=True)
-
             # --------------------------------------------------------
-            # TAB 5: CORRELATION HEATMAP
+            # TAB 5: TREND OVER TIME
             # --------------------------------------------------------
 
             with visual_tab5:
+
+                st.subheader(f"{selected_pollutant} Trend Over Time")
+
+                if "datetime" in df.columns:
+
+                    trend_df = (
+                        df.groupby("datetime")[selected_pollutant]
+                        .mean()
+                        .reset_index()
+                    )
+
+                    fig = px.line(
+                        trend_df,
+                        x="datetime",
+                        y=selected_pollutant,
+                        title=f"{selected_pollutant} Trend Over Time",
+                        markers=False
+                    )
+
+                    fig.update_traces(line=dict(width=3))
+
+                    fig = apply_plotly_style(
+                        fig,
+                        f"{selected_pollutant} Trend Over Time"
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.markdown(
+                        """
+                        <div class="insight-box">
+                        <b>Interpretation:</b> This time-series chart shows how pollution levels change over time.
+                        It helps identify periods of higher and lower air pollution.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                elif "Month" in df.columns:
+
+                    trend_df = (
+                        df.groupby("Month")[selected_pollutant]
+                        .mean()
+                        .reset_index()
+                    )
+
+                    fig = px.line(
+                        trend_df,
+                        x="Month",
+                        y=selected_pollutant,
+                        markers=True,
+                        line_shape="spline"
+                    )
+
+                    fig.update_traces(line=dict(width=4), marker=dict(size=10))
+
+                    fig = apply_plotly_style(
+                        fig,
+                        f"Monthly Trend of {selected_pollutant}"
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                else:
+                    st.warning("No datetime or month column found for trend analysis.")
+            # --------------------------------------------------------
+            # TAB 6: TEMPERATURE DISTRIBUTION
+            # --------------------------------------------------------
+
+            with visual_tab6:
+
+                st.subheader("Temperature Distribution")
+
+                if "TEMP" in df.columns:
+
+                    color_column = "season" if "season" in df.columns else None
+
+                    fig = px.histogram(
+                        df,
+                        x="TEMP",
+                        color=color_column,
+                        nbins=50,
+                        marginal="box",
+                        opacity=0.75,
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+
+                    fig = apply_plotly_style(
+                        fig,
+                        "Temperature Distribution"
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.markdown(
+                        """
+                        <div class="insight-box">
+                        <b>Interpretation:</b> This chart shows the spread of temperature values in the dataset.
+                        It also helps explain seasonal and weather-related effects on air pollution.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                else:
+                    st.warning("TEMP column not found in the dataset.")
+            # --------------------------------------------------------
+            # TAB 7: CORRELATION HEATMAP
+            # --------------------------------------------------------
+
+            with visual_tab7:
 
                 numeric_df = df.select_dtypes(include=["float64", "int64"])
 
@@ -694,6 +806,81 @@ elif page == "📊 Beautiful Visualisations":
                         """,
                         unsafe_allow_html=True
                     )
+            # --------------------------------------------------------
+            # TAB 8: ACTUAL VS PREDICTED
+            # --------------------------------------------------------
+
+            with visual_tab8:
+
+                st.subheader("Actual vs Predicted PM2.5")
+
+                required_features = ["PM10", "SO2", "NO2", "CO", "O3", "TEMP", "PRES", "DEWP", "RAIN", "WSPM"]
+
+                if model is None or scaler is None:
+                    st.warning("Model or scaler file not found.")
+
+                elif "PM2.5" not in df.columns:
+                    st.warning("PM2.5 column not found in dataset.")
+
+                elif not all(col in df.columns for col in required_features):
+                    st.warning("Some required model features are missing from the dataset.")
+
+                else:
+                    model_df = df[required_features + ["PM2.5"]].dropna()
+
+                    if len(model_df) > 3000:
+                        model_df = model_df.sample(3000, random_state=42)
+
+                    X_actual = model_df[required_features]
+                    y_actual = model_df["PM2.5"]
+
+                    try:
+                        X_scaled = scaler.transform(X_actual)
+                        y_predicted = model.predict(X_scaled)
+
+                        actual_pred_df = pd.DataFrame(
+                            {
+                                "Actual PM2.5": y_actual,
+                                "Predicted PM2.5": y_predicted
+                            }
+                        )
+
+                        fig = px.scatter(
+                            actual_pred_df,
+                            x="Actual PM2.5",
+                            y="Predicted PM2.5",
+                            opacity=0.6,
+                            title="Actual vs Predicted PM2.5"
+                        )
+
+                        fig.add_shape(
+                            type="line",
+                            x0=actual_pred_df["Actual PM2.5"].min(),
+                            y0=actual_pred_df["Actual PM2.5"].min(),
+                            x1=actual_pred_df["Actual PM2.5"].max(),
+                            y1=actual_pred_df["Actual PM2.5"].max(),
+                            line=dict(width=3, dash="dash")
+                        )
+
+                        fig = apply_plotly_style(
+                            fig,
+                            "Actual vs Predicted PM2.5"
+                        )
+
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown(
+                            """
+                            <div class="insight-box">
+                            <b>Interpretation:</b> Points closer to the diagonal line show better prediction accuracy.
+                            This graph demonstrates how well the trained model predicts PM2.5 values compared with actual observations.
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                    except Exception as e:
+                        st.error(f"Could not create Actual vs Predicted graph: {e}")
 
 
 # ============================================================
